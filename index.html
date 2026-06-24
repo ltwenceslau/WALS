@@ -346,6 +346,16 @@ h2 {
     margin-top: 0;
 }
 
+.action-row.form-actions {
+    margin: 0 0 16px;
+}
+
+.action-row.form-actions .btn {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: 13px;
+}
+
 .btn {
     min-height: 44px;
     display: inline-flex;
@@ -566,6 +576,10 @@ h2 {
     .btn {
         width: 100%;
     }
+
+    .action-row.form-actions .btn {
+        width: auto;
+    }
 }
 
 </style>
@@ -644,6 +658,11 @@ h2 {
                 <span class="mini-status" id="product-count">0 produtos</span>
             </div>
             <form class="panel" id="coverage-form">
+                <div class="action-row form-actions">
+                    <button class="btn ghost" type="button" data-back="upload">Voltar</button>
+                    <button class="btn primary" type="submit">Avancar</button>
+                </div>
+                <div class="message-area" id="coverage-messages"></div>
                 <div class="coverage-tools">
                     <label class="search-box">
                         <span>Pesquisar produto</span>
@@ -666,11 +685,6 @@ h2 {
                         <tbody id="coverage-body"></tbody>
                     </table>
                 </div>
-                <div class="message-area" id="coverage-messages"></div>
-                <div class="action-row">
-                    <button class="btn ghost" type="button" data-back="upload">Voltar</button>
-                    <button class="btn primary" type="submit">Avancar</button>
-                </div>
             </form>
         </section>
 
@@ -680,6 +694,10 @@ h2 {
                 <span class="mini-status" id="divergence-count">0 ocorrencias</span>
             </div>
             <form class="panel" id="divergence-form">
+                <div class="action-row form-actions">
+                    <button class="btn ghost" type="button" data-back="coverage">Voltar</button>
+                    <button class="btn primary" type="submit">Processar</button>
+                </div>
                 <div class="table-wrap">
                     <table class="data-table compact">
                         <thead>
@@ -693,10 +711,6 @@ h2 {
                         </thead>
                         <tbody id="divergence-body"></tbody>
                     </table>
-                </div>
-                <div class="action-row">
-                    <button class="btn ghost" type="button" data-back="coverage">Voltar</button>
-                    <button class="btn primary" type="submit">Processar</button>
                 </div>
             </form>
         </section>
@@ -866,6 +880,21 @@ h2 {
     ]);
     const priorityOrder = { Alta: 1, Media: 2, Baixa: 3 };
     const sizeOrder = { PP: 1, P: 2, M: 3, G: 4, G1: 5, G2: 6, G3: 7, G4: 8, GG: 9, EG: 10, EGG: 11, U: 90, UNICO: 91 };
+    const repositionStatusOrder = {
+        "Repor": 1,
+        "Atencao manual": 2,
+        "Baixo giro": 3,
+        "Estoque OK": 4,
+        "Produto parado": 5,
+        "Excesso / capital parado": 6
+    };
+    const fabricPurchaseStatusOrder = {
+        "Avaliar compra de malha": 1,
+        "Sem malha": 2,
+        "Com malha disponivel": 3,
+        "Malha disponivel, mas sem necessidade de corte": 4,
+        "Nao comprar agora": 5
+    };
 
     const state = {
         files: {},
@@ -1722,24 +1751,204 @@ h2 {
     function buildWorkbook(analysis) {
         const workbook = XLSX.utils.book_new();
         const used = new Set();
-        analysis.products.forEach((product) => {
-            const rows = [];
-            rows.push([`WALS - ${product.produto}`]);
-            rows.push([]);
-            product.summary.forEach((item) => rows.push(item));
-            rows.push([]);
-            rows.push(outputColumns.map(([, label]) => label));
-            product.rows.forEach((row) => {
-                rows.push(outputColumns.map(([key]) => normalizeExcelValue(row[key])));
-            });
+        if (!analysis.products.length) {
+            XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["Nenhum produto analisado"]]), "Sem analise");
+            return workbook;
+        }
 
-            const sheet = XLSX.utils.aoa_to_sheet(rows);
-            const headerRow = product.summary.length + 4;
-            sheet["!autofilter"] = { ref: `A${headerRow}:${columnLetter(outputColumns.length)}${rows.length}` };
-            sheet["!cols"] = outputColumns.map(([, label]) => ({ wch: Math.min(Math.max(label.length + 4, 12), label === "Motivo" ? 72 : 28) }));
-            XLSX.utils.book_append_sheet(workbook, sheet, sheetName(product.produto, used));
+        used.add("Grade Geral");
+        used.add(cleanText("Grade Geral"));
+        XLSX.utils.book_append_sheet(workbook, buildGeneralGridSheet(analysis), "Grade Geral");
+
+        analysis.products.forEach((product) => {
+            XLSX.utils.book_append_sheet(workbook, buildProductWorkbookSheet(product), sheetName(product.produto, used));
         });
         return workbook;
+    }
+
+    function buildGeneralGridSheet(analysis) {
+        const rows = analysis.products.flatMap((product) => product.rows.map((row) => ({ ...row, produto: product.produto })));
+        const sizes = collectGridSizes(rows);
+        const headers = gridHeaders(true, sizes);
+        const matrix = [
+            ["WALS - Grade geral de corte"],
+            ["Cores nas linhas e tamanhos nas colunas. Valores em pecas sugeridas para corte."],
+            headers,
+            ...buildGridRows(rows, sizes, true).map((record) => gridRecordValues(record, sizes, true))
+        ];
+        const sheet = XLSX.utils.aoa_to_sheet(matrix);
+        sheet["!merges"] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+            { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }
+        ];
+        sheet["!autofilter"] = { ref: `A3:${columnLetter(headers.length)}${matrix.length}` };
+        sheet["!cols"] = gridColumnWidths(true, sizes);
+        applyFreezePane(sheet, 7, 3);
+        return sheet;
+    }
+
+    function buildProductWorkbookSheet(product) {
+        const sizes = collectGridSizes(product.rows);
+        const headers = gridHeaders(false, sizes);
+        const gridRows = buildGridRows(product.rows, sizes, false);
+        const rows = [];
+        const merges = [];
+        const maxColumns = Math.max(outputColumns.length, headers.length);
+
+        rows.push([`WALS - ${product.produto}`]);
+        merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: Math.min(maxColumns - 1, 5) } });
+        rows.push([]);
+
+        const gridTitleIndex = rows.length;
+        rows.push(["Grade de corte sugerido"]);
+        merges.push({ s: { r: gridTitleIndex, c: 0 }, e: { r: gridTitleIndex, c: headers.length - 1 } });
+        rows.push(["Cores nas linhas e tamanhos nas colunas. Valores em pecas sugeridas para corte."]);
+        merges.push({ s: { r: gridTitleIndex + 1, c: 0 }, e: { r: gridTitleIndex + 1, c: headers.length - 1 } });
+        const gridHeaderRow = rows.length + 1;
+        rows.push(headers);
+        gridRows.forEach((record) => rows.push(gridRecordValues(record, sizes, false)));
+
+        rows.push([]);
+        rows.push(["Resumo do produto"]);
+        product.summary.forEach((item) => rows.push(item));
+        rows.push([]);
+        rows.push(["Detalhamento tecnico"]);
+        rows.push([]);
+        rows.push(outputColumns.map(([, label]) => label));
+        product.rows.forEach((row) => {
+            rows.push(outputColumns.map(([key]) => normalizeExcelValue(row[key])));
+        });
+
+        const sheet = XLSX.utils.aoa_to_sheet(rows);
+        sheet["!merges"] = merges;
+        sheet["!autofilter"] = { ref: `A${gridHeaderRow}:${columnLetter(headers.length)}${gridHeaderRow + gridRows.length}` };
+        sheet["!cols"] = productSheetColumnWidths(maxColumns, sizes, headers.length);
+        applyFreezePane(sheet, 6, gridHeaderRow);
+        return sheet;
+    }
+
+    function applyFreezePane(sheet, xSplit, ySplit) {
+        const topLeftCell = `${columnLetter(xSplit + 1)}${ySplit + 1}`;
+        const activePane = xSplit && ySplit ? "bottomRight" : ySplit ? "bottomLeft" : "topRight";
+        sheet["!freeze"] = {
+            xSplit,
+            ySplit,
+            topLeftCell,
+            activePane,
+            state: "frozen"
+        };
+        sheet["!views"] = [{
+            state: "frozen",
+            xSplit,
+            ySplit,
+            topLeftCell,
+            activePane
+        }];
+    }
+
+    function collectGridSizes(rows) {
+        return Array.from(new Set(rows.map((row) => row.tamanho).filter(Boolean)))
+            .sort((a, b) => {
+                const order = (sizeOrder[a] || 99) - (sizeOrder[b] || 99);
+                return order || String(a).localeCompare(String(b));
+            });
+    }
+
+    function gridHeaders(includeProduct, sizes) {
+        const base = includeProduct ? ["Produto"] : [];
+        return base.concat(["Cor", "Prioridade", "Status Malha", "Compra Malha", "Status Reposicao", "Total Sugerido"], sizes);
+    }
+
+    function buildGridRows(rows, sizes, includeProduct) {
+        const groups = new Map();
+        rows.forEach((row) => {
+            const key = includeProduct ? `${row.produto}|${row.cor}` : row.cor;
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    produto: includeProduct ? row.produto : "",
+                    cor: row.cor,
+                    rows: [],
+                    sizes: Object.fromEntries(sizes.map((size) => [size, 0])),
+                    presentSizes: new Set(),
+                    total_sugerido: 0
+                });
+            }
+            const group = groups.get(key);
+            group.rows.push(row);
+            group.total_sugerido += Number(row.sugestao_corte || 0);
+            if (row.tamanho) {
+                group.presentSizes.add(row.tamanho);
+                group.sizes[row.tamanho] = Number(group.sizes[row.tamanho] || 0) + Number(row.sugestao_corte || 0);
+            }
+        });
+
+        return Array.from(groups.values()).map((group) => ({
+            produto: group.produto,
+            cor: group.cor,
+            prioridade_cor: bestPriority(group.rows),
+            status_malha: firstValue(group.rows, "status_malha"),
+            status_compra_malha: bestStatus(group.rows, "status_compra_malha", fabricPurchaseStatusOrder),
+            status_reposicao: bestStatus(group.rows, "status_reposicao", repositionStatusOrder),
+            total_sugerido: group.total_sugerido,
+            sizes: group.sizes,
+            presentSizes: group.presentSizes
+        })).sort((a, b) => {
+            const product = String(a.produto || "").localeCompare(String(b.produto || ""));
+            if (product) return product;
+            const priority = (priorityOrder[a.prioridade_cor] || 9) - (priorityOrder[b.prioridade_cor] || 9);
+            if (priority) return priority;
+            return String(a.cor || "").localeCompare(String(b.cor || ""));
+        });
+    }
+
+    function gridRecordValues(record, sizes, includeProduct) {
+        const values = [];
+        if (includeProduct) values.push(record.produto);
+        values.push(
+            record.cor,
+            record.prioridade_cor,
+            record.status_malha,
+            record.status_compra_malha,
+            record.status_reposicao,
+            normalizeExcelValue(record.total_sugerido)
+        );
+        sizes.forEach((size) => {
+            values.push(record.presentSizes.has(size) ? normalizeExcelValue(record.sizes[size]) : "");
+        });
+        return values;
+    }
+
+    function bestPriority(rows) {
+        const values = rows.map((row) => row.prioridade_cor).filter(Boolean);
+        return values.sort((a, b) => (priorityOrder[a] || 9) - (priorityOrder[b] || 9))[0] || "";
+    }
+
+    function firstValue(rows, field) {
+        const row = rows.find((item) => item[field]);
+        return row ? row[field] : "";
+    }
+
+    function bestStatus(rows, field, order) {
+        const values = rows.map((row) => row[field]).filter(Boolean);
+        return values.sort((a, b) => (order[a] || 99) - (order[b] || 99))[0] || "";
+    }
+
+    function gridColumnWidths(includeProduct, sizes) {
+        const widths = includeProduct
+            ? [24, 20, 14, 18, 24, 22, 14]
+            : [20, 14, 18, 24, 22, 14];
+        sizes.forEach(() => widths.push(11));
+        return widths.map((width) => ({ wch: width }));
+    }
+
+    function productSheetColumnWidths(maxColumns, sizes, gridColumnCount) {
+        const gridWidths = gridColumnWidths(false, sizes).map((item) => item.wch);
+        const widths = Array.from({ length: maxColumns }, (_, index) => {
+            if (index < gridColumnCount) return gridWidths[index] || 14;
+            const label = outputColumns[index] ? outputColumns[index][1] : "";
+            return Math.min(Math.max(label.length + 4, 12), label === "Motivo" ? 72 : 28);
+        });
+        return widths.map((width) => ({ wch: width }));
     }
 
     function columnLetter(columnNumber) {

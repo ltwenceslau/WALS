@@ -17,7 +17,8 @@ Ela roda 100% no navegador:
 - recebe cobertura por modelo selecionado;
 - mostra divergencias;
 - calcula giro, cobertura, meta e sugestao de corte;
-- gera Excel final para download.
+- gera Excel final para download com uma aba `Grade Geral` e grades por produto, com cores nas linhas e tamanhos nas colunas.
+- mantem o cabecalho das grades congelado no Excel para facilitar a leitura ao rolar a planilha.
 - le PDF no arquivo de estoque de malha.
 
 Formatos aceitos:
@@ -168,7 +169,7 @@ Por isso, o WALS cruza a disponibilidade somente pela cor encontrada no arquivo 
 - Sugestao de corte = max(meta inteligente - estoque atual, 0), sem arredondamento.
 - Malha binaria por cor.
 - Prioridade por cor dentro do produto.
-- Excel com aba por produto, resumo e tabela detalhada.
+- Excel com aba `Grade Geral`, aba por produto, grade de corte por cor/tamanho, resumo e tabela detalhada.
 
 ## Testes
 
