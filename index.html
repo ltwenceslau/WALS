@@ -349,6 +349,12 @@ h2 {
     border-color: var(--cyan);
 }
 
+.check-input {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--cyan);
+}
+
 .tag {
     display: inline-flex;
     min-height: 26px;
@@ -534,7 +540,7 @@ h2 {
                     <span class="card-icon">04</span>
                     <strong>Estoque de malha</strong>
                     <small data-file-name="fabric">Nenhum arquivo</small>
-                    <input type="file" accept=".xlsx,.xls,.csv" data-file-input="fabric">
+                    <input type="file" accept=".xlsx,.xls,.csv,.pdf,application/pdf" data-file-input="fabric">
                 </label>
             </div>
             <div class="message-area" id="upload-messages"></div>
@@ -554,8 +560,10 @@ h2 {
                     <table class="data-table">
                         <thead>
                             <tr>
+                                <th>Reposicao</th>
                                 <th>Produto/modelo</th>
                                 <th>Dias de cobertura desejada</th>
+                                <th>Malha usada no modelo</th>
                             </tr>
                         </thead>
                         <tbody id="coverage-body"></tbody>
@@ -674,6 +682,7 @@ h2 {
         quantidade_vendida: ["qtd", "qtde", "quantidade", "quantidade_vendida", "qtd_vendida", "vendido", "vendas"],
         quantidade_entrada: ["qtd", "qtde", "quantidade", "quantidade_entrada", "qtd_entrada", "entrada", "reposicao", "movimentacao"],
         valor: ["valor", "valor_total", "preco", "receita", "faturamento"],
+        tipo_malha: ["tipo_malha", "malha", "tecido", "base", "material", "descricao", "descrição", "grupo"],
         status_disponibilidade: ["status", "disponibilidade", "status_disponibilidade"]
     };
 
@@ -681,7 +690,7 @@ h2 {
         currentStock: ["codigo_estoque", "nome_estoque", "produto", "cor", "tamanho", "estoque_atual"],
         sales: ["codigo_estoque", "nome_estoque", "produto", "cor", "tamanho", "data_aprovacao", "quantidade_vendida", "valor"],
         entries: ["codigo_estoque", "nome_estoque", "produto", "cor", "tamanho", "data_entrada", "quantidade_entrada"],
-        fabric: ["cor", "status_disponibilidade"]
+        fabric: ["cor", "tipo_malha", "status_disponibilidade"]
     };
 
     const outputColumns = [
@@ -689,6 +698,7 @@ h2 {
         ["nome_estoque", "Nome Estoque"],
         ["produto", "Produto"],
         ["cor", "Cor"],
+        ["malha_usada", "Malha Usada"],
         ["tamanho", "Tamanho"],
         ["estoque_atual", "Estoque Atual"],
         ["vendido_periodo", "Vendido no Periodo"],
@@ -710,6 +720,13 @@ h2 {
     ];
 
     const knownSizes = new Set(["PP", "P", "M", "G", "G1", "G2", "G3", "G4", "GG", "EG", "EGG", "U", "UNICO"]);
+    const commonColorNames = [
+        "PRETO", "BRANCO", "OFF WHITE", "OFF", "CRU", "NATURAL", "GELO", "AREIA", "BEGE", "CREME",
+        "CINZA", "MESCLA", "CHUMBO", "GRAFITE", "MARINHO", "AZUL", "ROYAL", "JEANS", "VERDE",
+        "MILITAR", "OLIVA", "LIMA", "AMARELO", "MOSTARDA", "LARANJA", "TERRACOTA", "TELHA",
+        "VERMELHO", "VINHO", "BORDO", "ROSA", "PINK", "LILAS", "LAVANDA", "ROXO", "UVA",
+        "MARROM", "CAFE", "CARAMELO", "CHOCOLATE"
+    ];
     const sizeAliases = new Map([
         ["XG", "G1"],
         ["G 1", "G1"],
@@ -731,6 +748,7 @@ h2 {
         data: {},
         products: [],
         coverage: {},
+        modelFabric: {},
         divergences: [],
         analysis: null,
         workbook: null
@@ -790,20 +808,30 @@ h2 {
 
     async function loadFiles() {
         clearMessages("upload-messages");
-        if (typeof XLSX === "undefined") {
-            showMessage("upload-messages", "Biblioteca de planilhas nao carregou. Verifique a conexao e atualize a pagina.");
+        setBusy(true);
+
+        try {
+            await ensureScript("XLSX", [
+                "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
+                "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+            ]);
+        } catch (error) {
+            setBusy(false);
+            showMessage("upload-messages", "Nao foi possivel carregar a biblioteca de planilhas. Verifique a internet, atualize a pagina e tente novamente.");
             return;
         }
 
         const missing = Object.keys(fileKinds).filter((kind) => !state.files[kind]);
         if (missing.length) {
+            setBusy(false);
             showMessage("upload-messages", `Arquivos faltando: ${missing.map((kind) => fileKinds[kind]).join(", ")}.`);
             return;
         }
 
         try {
             for (const kind of Object.keys(fileKinds)) {
-                const rows = await readFileRows(state.files[kind]);
+                showMessage("upload-messages", `Lendo ${fileKinds[kind]}...`, true);
+                const rows = await readFileRows(state.files[kind], kind);
                 state.raw[kind] = rows;
                 state.data[kind] = normalizeRows(mapColumns(rows, kind), kind);
             }
@@ -821,10 +849,20 @@ h2 {
             showView("coverage");
         } catch (error) {
             showMessage("upload-messages", error.message || String(error));
+        } finally {
+            setBusy(false);
         }
     }
 
-    function readFileRows(file) {
+    async function readFileRows(file, kind) {
+        const extension = getFileExtension(file.name);
+        if (kind === "fabric" && extension === "pdf") {
+            return readFabricPdfRows(file);
+        }
+        if (extension === "pdf") {
+            throw new Error(`${file.name}: PDF so e aceito no arquivo Estoque de malha.`);
+        }
+
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (event) => {
@@ -842,6 +880,49 @@ h2 {
             reader.onerror = () => reject(new Error(`Nao foi possivel ler ${file.name}.`));
             reader.readAsArrayBuffer(file);
         });
+    }
+
+    async function readFabricPdfRows(file) {
+        await ensureScript("pdfjsLib", [
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+            "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"
+        ]);
+
+        if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        }
+
+        const data = new Uint8Array(await file.arrayBuffer());
+        const pdf = await window.pdfjsLib.getDocument({ data }).promise;
+        const lines = [];
+
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            const page = await pdf.getPage(pageNumber);
+            const content = await page.getTextContent();
+            const byLine = new Map();
+            content.items.forEach((item) => {
+                const y = Math.round(item.transform[5]);
+                if (!byLine.has(y)) byLine.set(y, []);
+                byLine.get(y).push({ x: item.transform[4], text: item.str });
+            });
+            Array.from(byLine.entries())
+                .sort((a, b) => b[0] - a[0])
+                .forEach(([, parts]) => {
+                    const line = parts
+                        .sort((a, b) => a.x - b.x)
+                        .map((part) => part.text)
+                        .join(" ")
+                        .replace(/\s+/g, " ")
+                        .trim();
+                    if (line) lines.push(line);
+                });
+        }
+
+        const fabricRows = extractFabricRowsFromLines(lines);
+        if (!fabricRows.length) {
+            throw new Error(`${file.name}: nao consegui identificar cores no PDF de malha. Verifique se o PDF possui texto selecionavel, nao apenas imagem escaneada.`);
+        }
+        return fabricRows;
     }
 
     function mapColumns(rows, kind) {
@@ -880,10 +961,13 @@ h2 {
             const seen = new Set();
             return rows.map((row) => ({
                 cor: cleanText(row.cor),
+                tipo_malha: cleanText(row.tipo_malha),
+                texto_busca: cleanText(`${row.tipo_malha || ""} ${row.cor || ""}`),
                 status_disponibilidade: cleanText(row.status_disponibilidade) || "DISPONIVEL"
             })).filter((row) => {
-                if (!row.cor || seen.has(row.cor)) return false;
-                seen.add(row.cor);
+                const key = `${row.tipo_malha}|${row.cor}`;
+                if (!row.cor || seen.has(key)) return false;
+                seen.add(key);
                 return true;
             });
         }
@@ -935,8 +1019,10 @@ h2 {
     function renderCoverage() {
         $("#coverage-body").innerHTML = state.products.map((product, index) => `
             <tr>
+                <td><input class="check-input" type="checkbox" name="selected_${index}" data-select-product="${escapeHtml(product)}" checked></td>
                 <td>${escapeHtml(product)}</td>
                 <td><input class="number-input" min="1" step="0.01" type="number" name="coverage_${index}" data-product="${escapeHtml(product)}" placeholder="Ex.: 20"></td>
+                <td><input class="text-input" type="text" name="fabric_${index}" data-fabric-product="${escapeHtml(product)}" placeholder="Ex.: cotton, viscose, canelada"></td>
             </tr>
         `).join("");
         $("#product-count").textContent = `${state.products.length} produto(s)`;
@@ -945,18 +1031,34 @@ h2 {
     function saveCoverage() {
         clearMessages("coverage-messages");
         const coverage = {};
+        const modelFabric = {};
+        const selectedProducts = new Set(
+            $("#coverage-body [data-select-product]")
+                .filter((input) => input.checked)
+                .map((input) => input.dataset.selectProduct)
+        );
+
         $("#coverage-body input").forEach((input) => {
+            if (!input.dataset.product) return;
+            if (!selectedProducts.has(input.dataset.product)) return;
             const raw = String(input.value || "").replace(",", ".");
             const value = Number(raw);
             if (value > 0) coverage[input.dataset.product] = value;
         });
 
+        $("#coverage-body [data-fabric-product]").forEach((input) => {
+            if (!selectedProducts.has(input.dataset.fabricProduct)) return;
+            const value = cleanText(input.value);
+            if (value) modelFabric[input.dataset.fabricProduct] = value;
+        });
+
         if (!Object.keys(coverage).length) {
-            showMessage("coverage-messages", "Informe cobertura para pelo menos um produto.");
+            showMessage("coverage-messages", "Selecione pelo menos um modelo e informe a cobertura dele.");
             return;
         }
 
         state.coverage = coverage;
+        state.modelFabric = modelFabric;
         renderDivergences();
         showView("divergences");
     }
@@ -1017,7 +1119,7 @@ h2 {
 
         window.setTimeout(() => {
             try {
-                state.analysis = runAnalysis(state.data, state.coverage);
+                state.analysis = runAnalysis(state.data, state.coverage, state.modelFabric);
                 state.workbook = buildWorkbook(state.analysis);
                 steps.forEach((step) => {
                     step.classList.remove("active");
@@ -1035,8 +1137,9 @@ h2 {
         }, 900);
     }
 
-    function runAnalysis(data, coverage) {
+    function runAnalysis(data, coverage, modelFabric) {
         const covered = new Map(Object.entries(coverage).map(([product, days]) => [cleanText(product), Number(days)]));
+        const fabricByProduct = new Map(Object.entries(modelFabric || {}).map(([product, fabric]) => [cleanText(product), cleanText(fabric)]));
         const stock = data.currentStock.filter((row) => covered.has(cleanText(row.produto)));
         if (!stock.length) throw new Error("Nenhum produto com cobertura foi encontrado no estoque atual.");
 
@@ -1045,20 +1148,22 @@ h2 {
         const groupedStock = groupRows(stock, "estoque_atual");
         const groupedSales = groupRows(validSales, "quantidade_vendida", "vendido_periodo");
         const groupedEntries = groupRows(data.entries, "quantidade_entrada", "entrada_periodo");
-        const fabricColors = new Set(data.fabric.map((row) => cleanText(row.cor)));
 
         const rows = groupedStock.map((row) => {
             const key = makeKey(row);
             const salesRow = groupedSales.lookup.get(key) || {};
             const entryRow = groupedEntries.lookup.get(key) || {};
             const desired = covered.get(cleanText(row.produto));
+            const selectedFabric = fabricByProduct.get(cleanText(row.produto)) || "";
             const sold = Number(salesRow.vendido_periodo || 0);
             const daily = sold / period.days;
             const currentCoverage = daily > 0 ? row.estoque_atual / daily : null;
             const target = daily * desired;
             const suggestion = Math.max(target - row.estoque_atual, 0);
+            const hasFabric = hasFabricForRow(row, data.fabric, selectedFabric);
             return {
                 ...row,
+                malha_usada: selectedFabric,
                 vendido_periodo: sold,
                 entrada_periodo: Number(entryRow.entrada_periodo || 0),
                 dias_periodo: period.days,
@@ -1067,7 +1172,7 @@ h2 {
                 cobertura_desejada: desired,
                 meta_inteligente: target,
                 sugestao_corte: suggestion,
-                status_malha: fabricColors.has(cleanText(row.cor)) ? "Com malha" : "Sem malha"
+                status_malha: hasFabric ? "Com malha" : "Sem malha"
             };
         });
 
@@ -1345,11 +1450,22 @@ h2 {
 
             const sheet = XLSX.utils.aoa_to_sheet(rows);
             const headerRow = product.summary.length + 4;
-            sheet["!autofilter"] = { ref: `A${headerRow}:V${rows.length}` };
+            sheet["!autofilter"] = { ref: `A${headerRow}:${columnLetter(outputColumns.length)}${rows.length}` };
             sheet["!cols"] = outputColumns.map(([, label]) => ({ wch: Math.min(Math.max(label.length + 4, 12), label === "Motivo" ? 72 : 28) }));
             XLSX.utils.book_append_sheet(workbook, sheet, sheetName(product.produto, used));
         });
         return workbook;
+    }
+
+    function columnLetter(columnNumber) {
+        let number = columnNumber;
+        let letters = "";
+        while (number > 0) {
+            const modulo = (number - 1) % 26;
+            letters = String.fromCharCode(65 + modulo) + letters;
+            number = Math.floor((number - modulo) / 26);
+        }
+        return letters;
     }
 
     function downloadWorkbook() {
@@ -1376,6 +1492,135 @@ h2 {
     function updateUploadStatus() {
         const loaded = Object.keys(fileKinds).filter((kind) => state.files[kind]).length;
         $("#upload-status").textContent = `${loaded} de 4 carregados`;
+    }
+
+    function setBusy(isBusy) {
+        const button = $("#load-files-btn");
+        if (!button) return;
+        button.disabled = isBusy;
+        button.textContent = isBusy ? "Carregando..." : "Carregar arquivos";
+    }
+
+    function ensureScript(globalName, urls) {
+        if (window[globalName]) return Promise.resolve();
+        const existing = document.querySelector(`[data-loader="${globalName}"]`);
+        if (existing) {
+            return new Promise((resolve, reject) => {
+                existing.addEventListener("load", () => resolve(), { once: true });
+                existing.addEventListener("error", () => reject(new Error(`Falha ao carregar ${globalName}.`)), { once: true });
+            });
+        }
+        return loadScriptFromList(globalName, urls.slice());
+    }
+
+    function loadScriptFromList(globalName, urls) {
+        return new Promise((resolve, reject) => {
+            const next = () => {
+                const url = urls.shift();
+                if (!url) {
+                    reject(new Error(`Falha ao carregar ${globalName}.`));
+                    return;
+                }
+                const script = document.createElement("script");
+                script.src = url;
+                script.dataset.loader = globalName;
+                script.onload = () => {
+                    if (window[globalName]) resolve();
+                    else next();
+                };
+                script.onerror = next;
+                document.head.appendChild(script);
+            };
+            next();
+        });
+    }
+
+    function getFileExtension(filename) {
+        const match = String(filename || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+        return match ? match[1] : "";
+    }
+
+    function extractFabricRowsFromLines(lines) {
+        const ignored = new Set([
+            "COR",
+            "CORES",
+            "DESCRICAO",
+            "DESCRIÇÃO",
+            "ESTOQUE",
+            "MALHA",
+            "TOTAL",
+            "SALDO",
+            "QTDE",
+            "QTD",
+            "QUANTIDADE",
+            "DATA",
+            "CODIGO",
+            "CÓDIGO",
+            "REFERENCIA",
+            "REFERÊNCIA"
+        ]);
+        const rows = [];
+        const seen = new Set();
+
+        lines.forEach((line) => {
+            const fullLine = cleanFabricColorCandidate(line);
+            if (!fullLine) return;
+            const fragments = line
+                .split(/\s{2,}|\t|;|\|/)
+                .map((fragment) => cleanFabricColorCandidate(fragment))
+                .filter(Boolean);
+            const knownColors = commonColorNames.filter((color) => containsWholeText(fullLine, color));
+            const candidates = knownColors.length ? knownColors : (fragments.length ? fragments : [fullLine]);
+
+            candidates.forEach((candidate) => {
+                if (!candidate || ignored.has(candidate)) return;
+                if (/^\d+$/.test(candidate)) return;
+                if (candidate.length < 3 || candidate.length > 36) return;
+                if (/\b(KG|KGS|METRO|METROS|ROLO|ROLOS|BOBINA|BOBINAS|TOTAL|SALDO|DATA)\b/.test(candidate)) return;
+                if (!/[A-Z]/.test(candidate)) return;
+                const key = `${candidate}|${fullLine}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    rows.push({
+                        cor: candidate,
+                        tipo_malha: fullLine,
+                        texto_busca: fullLine,
+                        status_disponibilidade: "DISPONIVEL"
+                    });
+                }
+            });
+        });
+
+        return rows;
+    }
+
+    function cleanFabricColorCandidate(value) {
+        let text = cleanText(value);
+        text = text.replace(/\b\d+([,.]\d+)?\b/g, " ");
+        text = text.replace(/\b(KG|KGS|M|MT|MTS|METROS?|ROLOS?|BOBINAS?|UN|UND|PÇS|PCS)\b/g, " ");
+        text = text.replace(/[^A-Z0-9 ]/g, " ");
+        text = text.replace(/\s+/g, " ").trim();
+        return text;
+    }
+
+    function hasFabricForRow(row, fabricRows, selectedFabric) {
+        const color = cleanText(row.cor);
+        const fabric = cleanText(selectedFabric);
+        if (!color) return false;
+
+        return fabricRows.some((fabricRow) => {
+            const haystack = cleanText(`${fabricRow.tipo_malha || ""} ${fabricRow.texto_busca || ""} ${fabricRow.cor || ""}`);
+            const fabricColor = cleanText(fabricRow.cor);
+            const colorMatches = fabricColor === color || containsWholeText(haystack, color);
+            const fabricMatches = !fabric || containsWholeText(haystack, fabric);
+            return colorMatches && fabricMatches;
+        });
+    }
+
+    function containsWholeText(text, needle) {
+        const normalizedText = ` ${cleanText(text)} `;
+        const normalizedNeedle = ` ${cleanText(needle)} `;
+        return normalizedText.includes(normalizedNeedle);
     }
 
     function showMessage(id, text, ok) {
@@ -1545,4 +1790,6 @@ h2 {
 </script>
 </body>
 </html>
+
+
 

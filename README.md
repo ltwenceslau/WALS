@@ -10,17 +10,27 @@ Ela roda 100% no navegador:
 
 - importa os 4 arquivos obrigatorios;
 - identifica produtos/modelos;
-- recebe cobertura por produto;
+- permite selecionar quais modelos entram na reposicao;
+- recebe cobertura por modelo selecionado;
+- permite informar a malha usada por modelo;
 - mostra divergencias;
 - calcula giro, cobertura, meta e sugestao de corte;
 - gera Excel final para download.
+- le PDF no arquivo de estoque de malha.
 
-Arquivos minimos da versao GitHub Pages:
+Formatos aceitos:
+
+- Estoque atual do site: `.xlsx`, `.xls` ou `.csv`
+- Relatorio de vendas: `.xlsx`, `.xls` ou `.csv`
+- Entradas e reposicoes: `.xlsx`, `.xls` ou `.csv`
+- Estoque de malha: `.pdf`, `.xlsx`, `.xls` ou `.csv`
+
+Arquivos principais da versao GitHub Pages:
 
 - `index.html`
-- `.nojekyll`
+- `README.md`
 
-O `index.html` ja contem o CSS e o JavaScript do WALS embutidos. Isso evita erro de pagina sem estilo quando o GitHub Pages nao encontra arquivos externos.
+O `index.html` ja contem o CSS e o JavaScript do WALS embutidos. Isso evita erro de pagina sem estilo quando o GitHub Pages nao encontra arquivos externos. O arquivo `.nojekyll` e opcional.
 
 ## Como publicar no GitHub Pages
 
@@ -69,9 +79,11 @@ Acesse `http://127.0.0.1:8000`.
 Para publicar somente o site no GitHub Pages, envie os arquivos da pasta `SUBIR NO GIT`:
 
 - `index.html`
-- `.nojekyll`
+- `README.md`
 
-Para publicar tambem o codigo Python opcional, envie a pasta inteira, incluindo:
+O `index.html` ja tem CSS e JavaScript embutidos. Se voce subir apenas `index.html` e `README.md` na raiz do repositorio, o site funciona.
+
+Para publicar tambem o codigo Python opcional, envie a pasta completa do projeto, incluindo:
 
 - `index.html`
 - `assets/`
@@ -119,10 +131,20 @@ Em hosts com disco efemero, os uploads e Excels gerados existem apenas durante a
 
 1. Upload dos 4 arquivos obrigatorios.
 2. Identificacao automatica de produtos/modelos.
-3. Informacao de cobertura desejada por produto.
-4. Conferencia de divergencias e correcoes temporarias.
-5. Processamento da analise.
-6. Download do Excel final.
+3. Selecao dos modelos que terao reposicao.
+4. Informacao de cobertura desejada por modelo selecionado.
+5. Informacao opcional da malha usada em cada modelo.
+6. Conferencia de divergencias e correcoes temporarias.
+7. Processamento da analise.
+8. Download do Excel final.
+
+## Regra de modelo e malha
+
+Na tela de cobertura, marque apenas os modelos que deseja analisar para reposicao.
+
+O campo `Malha usada no modelo` e opcional. Quando preenchido, o WALS cruza a cor do produto com essa malha no arquivo/PDF de estoque de malha. Exemplo: se o modelo usa `COTTON`, o sistema procura a cor dentro das linhas do estoque de malha que tambem mencionam `COTTON`.
+
+Se o campo de malha ficar vazio, o WALS considera apenas a disponibilidade da cor.
 
 ## Regras implementadas
 
@@ -130,7 +152,7 @@ Em hosts com disco efemero, os uploads e Excels gerados existem apenas durante a
 - Somente itens presentes no estoque atual entram na reposicao.
 - Periodo vem da coluna Data da Aprovacao.
 - Cobertura e informada por produto.
-- Produto sem cobertura e ignorado.
+- Modelo nao selecionado ou sem cobertura e ignorado.
 - XG e normalizado como G1.
 - Estoque negativo entra no calculo e gera alerta.
 - Meta inteligente = venda media diaria x cobertura desejada.
