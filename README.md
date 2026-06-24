@@ -30,6 +30,8 @@ No estoque atual, o WALS reconhece variacoes de coluna para quantidade em estoqu
 
 Nas entradas e reposicoes, se o arquivo tiver `Produto` mas nao tiver `Nome Estoque`, o WALS usa `Produto` como nome/modelo do item. Isso atende planilhas com colunas como `Moviment.`, `Cod.Estoque`, `Produto`, `Cor`, `Tamanho` e `Qtd.`.
 
+No relatorio de vendas, linhas de rodape/resumo como `Qtd. Produtos`, `Valor Produtos`, `Envios`, `Descontos`, `Descontos Master` e `Total Final` sao ignoradas automaticamente. Elas nao entram no calculo nem geram erro de data invalida.
+
 Arquivos principais da versao GitHub Pages:
 
 - `index.html`

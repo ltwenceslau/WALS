@@ -1170,7 +1170,31 @@ h2 {
                 data_entrada: parseDate(row.data_entrada),
                 quantidade_entrada: toNumber(row.quantidade_entrada)
             };
-        });
+        }).filter((row) => !isIgnorableRow(kind, row));
+    }
+
+    function isIgnorableRow(kind, row) {
+        const hasAnyIdentity = Boolean(row.codigo_estoque || row.nome_estoque || row.produto || row.cor || row.tamanho);
+        if (!hasAnyIdentity && !row.data_aprovacao && !row.data_entrada) return true;
+
+        if (kind !== "sales") return false;
+
+        const summaryText = summaryKey(`${row.codigo_estoque || ""} ${row.nome_estoque || ""} ${row.produto || ""}`);
+        const isSummary = [
+            "QTD PRODUTOS",
+            "QUANTIDADE PRODUTOS",
+            "VALOR PRODUTOS",
+            "ENVIOS",
+            "DESCONTOS",
+            "DESCONTOS MASTER",
+            "TOTAL FINAL",
+            "TOTAL"
+        ].some((term) => summaryText.includes(term));
+
+        const hasSaleShape = Boolean(row.produto && row.cor && row.tamanho && row.quantidade_vendida > 0);
+        const hasDate = Boolean(row.data_aprovacao);
+
+        return !hasDate && !hasSaleShape && isSummary;
     }
 
     function validateData(data) {
@@ -1776,6 +1800,10 @@ h2 {
         return text;
     }
 
+    function summaryKey(value) {
+        return cleanText(value).replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    }
+
     function hasFabricForRow(row, fabricRows, selectedFabric) {
         const color = cleanText(row.cor);
         const fabric = cleanText(selectedFabric);
@@ -1963,6 +1991,8 @@ h2 {
 </script>
 </body>
 </html>
+
+
 
 
 
