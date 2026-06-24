@@ -12,8 +12,9 @@ Ela roda 100% no navegador:
 - mostra barra de carregamento e porcentagem ao selecionar cada arquivo;
 - identifica produtos/modelos;
 - permite selecionar quais modelos entram na reposicao;
+- permite pesquisar modelos na tela de cobertura;
+- permite selecionar ou desmarcar todos os modelos visiveis;
 - recebe cobertura por modelo selecionado;
-- permite informar a malha usada por modelo;
 - mostra divergencias;
 - calcula giro, cobertura, meta e sugestao de corte;
 - gera Excel final para download.
@@ -142,18 +143,17 @@ Em hosts com disco efemero, os uploads e Excels gerados existem apenas durante a
 2. Identificacao automatica de produtos/modelos.
 3. Selecao dos modelos que terao reposicao.
 4. Informacao de cobertura desejada por modelo selecionado.
-5. Informacao opcional da malha usada em cada modelo.
-6. Conferencia de divergencias e correcoes temporarias.
-7. Processamento da analise.
-8. Download do Excel final.
+5. Conferencia de divergencias e correcoes temporarias.
+6. Processamento da analise.
+7. Download do Excel final.
 
-## Regra de modelo e malha
+## Regra de modelo e arquivo de malha
 
 Na tela de cobertura, marque apenas os modelos que deseja analisar para reposicao.
 
-O campo `Malha usada no modelo` e opcional. Quando preenchido, o WALS cruza a cor do produto com essa malha no arquivo/PDF de estoque de malha. Exemplo: se o modelo usa `COTTON`, o sistema procura a cor dentro das linhas do estoque de malha que tambem mencionam `COTTON`.
+O arquivo de estoque de malha enviado representa a malha que voce deseja analisar naquele momento. Cada malha pode ser enviada em um arquivo separado.
 
-Se o campo de malha ficar vazio, o WALS considera apenas a disponibilidade da cor.
+Por isso, o WALS cruza a disponibilidade somente pela cor encontrada no arquivo de malha carregado.
 
 ## Regras implementadas
 

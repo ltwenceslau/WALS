@@ -257,6 +257,62 @@ h2 {
     padding: 20px;
 }
 
+.coverage-tools {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.search-box {
+    flex: 1 1 360px;
+    display: grid;
+    gap: 8px;
+}
+
+.search-box span {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.bulk-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.icon-btn {
+    width: 44px;
+    height: 44px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    color: var(--text);
+    background: #0b1015;
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1;
+    transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.icon-btn:hover {
+    transform: translateY(-1px);
+    border-color: var(--cyan);
+    background: var(--panel-2);
+}
+
+.icon-btn:first-child {
+    color: var(--green);
+}
+
+.icon-btn:last-child {
+    color: var(--rose);
+}
+
 .message-area {
     margin-top: 14px;
 }
@@ -588,6 +644,16 @@ h2 {
                 <span class="mini-status" id="product-count">0 produtos</span>
             </div>
             <form class="panel" id="coverage-form">
+                <div class="coverage-tools">
+                    <label class="search-box">
+                        <span>Pesquisar produto</span>
+                        <input class="text-input" type="search" id="product-search" placeholder="Digite o nome do produto/modelo">
+                    </label>
+                    <div class="bulk-actions" aria-label="Selecao em massa">
+                        <button class="icon-btn" type="button" id="select-visible-btn" title="Selecionar itens visiveis">✓</button>
+                        <button class="icon-btn" type="button" id="clear-visible-btn" title="Desmarcar itens visiveis">×</button>
+                    </div>
+                </div>
                 <div class="table-wrap">
                     <table class="data-table">
                         <thead>
@@ -595,7 +661,6 @@ h2 {
                                 <th>Reposicao</th>
                                 <th>Produto/modelo</th>
                                 <th>Dias de cobertura desejada</th>
-                                <th>Malha usada no modelo</th>
                             </tr>
                         </thead>
                         <tbody id="coverage-body"></tbody>
@@ -759,7 +824,6 @@ h2 {
         ["nome_estoque", "Nome Estoque"],
         ["produto", "Produto"],
         ["cor", "Cor"],
-        ["malha_usada", "Malha Usada"],
         ["tamanho", "Tamanho"],
         ["estoque_atual", "Estoque Atual"],
         ["vendido_periodo", "Vendido no Periodo"],
@@ -809,7 +873,6 @@ h2 {
         data: {},
         products: [],
         coverage: {},
-        modelFabric: {},
         divergences: [],
         analysis: null,
         workbook: null
@@ -888,6 +951,21 @@ h2 {
             event.preventDefault();
             saveCoverage();
         });
+
+        const search = $("#product-search");
+        if (search) {
+            search.addEventListener("input", () => filterCoverageProducts(search.value));
+        }
+
+        const selectVisible = $("#select-visible-btn");
+        if (selectVisible) {
+            selectVisible.addEventListener("click", () => setVisibleCoverageSelection(true));
+        }
+
+        const clearVisible = $("#clear-visible-btn");
+        if (clearVisible) {
+            clearVisible.addEventListener("click", () => setVisibleCoverageSelection(false));
+        }
 
         $("#divergence-form").addEventListener("submit", (event) => {
             event.preventDefault();
@@ -1215,20 +1293,40 @@ h2 {
 
     function renderCoverage() {
         $("#coverage-body").innerHTML = state.products.map((product, index) => `
-            <tr>
+            <tr data-product-row="${escapeHtml(product)}">
                 <td><input class="check-input" type="checkbox" name="selected_${index}" data-select-product="${escapeHtml(product)}" checked></td>
                 <td>${escapeHtml(product)}</td>
                 <td><input class="number-input" min="1" step="0.01" type="number" name="coverage_${index}" data-product="${escapeHtml(product)}" placeholder="Ex.: 20"></td>
-                <td><input class="text-input" type="text" name="fabric_${index}" data-fabric-product="${escapeHtml(product)}" placeholder="Ex.: cotton, viscose, canelada"></td>
             </tr>
         `).join("");
+        const search = $("#product-search");
+        if (search) search.value = "";
         $("#product-count").textContent = `${state.products.length} produto(s)`;
+    }
+
+    function filterCoverageProducts(query) {
+        const term = cleanText(query);
+        let visible = 0;
+        $$("#coverage-body tr").forEach((row) => {
+            const product = cleanText(row.dataset.productRow || row.textContent);
+            const show = !term || product.includes(term);
+            row.style.display = show ? "" : "none";
+            if (show) visible += 1;
+        });
+        $("#product-count").textContent = term ? `${visible} de ${state.products.length} produto(s)` : `${state.products.length} produto(s)`;
+    }
+
+    function setVisibleCoverageSelection(checked) {
+        $$("#coverage-body tr").forEach((row) => {
+            if (row.style.display === "none") return;
+            const checkbox = row.querySelector("[data-select-product]");
+            if (checkbox) checkbox.checked = checked;
+        });
     }
 
     function saveCoverage() {
         clearMessages("coverage-messages");
         const coverage = {};
-        const modelFabric = {};
         const selectedProducts = new Set(
             $$("#coverage-body [data-select-product]")
                 .filter((input) => input.checked)
@@ -1243,19 +1341,12 @@ h2 {
             if (value > 0) coverage[input.dataset.product] = value;
         });
 
-        $$("#coverage-body [data-fabric-product]").forEach((input) => {
-            if (!selectedProducts.has(input.dataset.fabricProduct)) return;
-            const value = cleanText(input.value);
-            if (value) modelFabric[input.dataset.fabricProduct] = value;
-        });
-
         if (!Object.keys(coverage).length) {
             showMessage("coverage-messages", "Selecione pelo menos um modelo e informe a cobertura dele.");
             return;
         }
 
         state.coverage = coverage;
-        state.modelFabric = modelFabric;
         renderDivergences();
         showView("divergences");
     }
@@ -1316,7 +1407,7 @@ h2 {
 
         window.setTimeout(() => {
             try {
-                state.analysis = runAnalysis(state.data, state.coverage, state.modelFabric);
+                state.analysis = runAnalysis(state.data, state.coverage);
                 state.workbook = buildWorkbook(state.analysis);
                 steps.forEach((step) => {
                     step.classList.remove("active");
@@ -1334,9 +1425,8 @@ h2 {
         }, 900);
     }
 
-    function runAnalysis(data, coverage, modelFabric) {
+    function runAnalysis(data, coverage) {
         const covered = new Map(Object.entries(coverage).map(([product, days]) => [cleanText(product), Number(days)]));
-        const fabricByProduct = new Map(Object.entries(modelFabric || {}).map(([product, fabric]) => [cleanText(product), cleanText(fabric)]));
         const stock = data.currentStock.filter((row) => covered.has(cleanText(row.produto)));
         if (!stock.length) throw new Error("Nenhum produto com cobertura foi encontrado no estoque atual.");
 
@@ -1351,16 +1441,14 @@ h2 {
             const salesRow = groupedSales.lookup.get(key) || {};
             const entryRow = groupedEntries.lookup.get(key) || {};
             const desired = covered.get(cleanText(row.produto));
-            const selectedFabric = fabricByProduct.get(cleanText(row.produto)) || "";
             const sold = Number(salesRow.vendido_periodo || 0);
             const daily = sold / period.days;
             const currentCoverage = daily > 0 ? row.estoque_atual / daily : null;
             const target = daily * desired;
             const suggestion = Math.max(target - row.estoque_atual, 0);
-            const hasFabric = hasFabricForRow(row, data.fabric, selectedFabric);
+            const hasFabric = hasFabricForRow(row, data.fabric);
             return {
                 ...row,
-                malha_usada: selectedFabric,
                 vendido_periodo: sold,
                 entrada_periodo: Number(entryRow.entrada_periodo || 0),
                 dias_periodo: period.days,
@@ -1804,17 +1892,15 @@ h2 {
         return cleanText(value).replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
     }
 
-    function hasFabricForRow(row, fabricRows, selectedFabric) {
+    function hasFabricForRow(row, fabricRows) {
         const color = cleanText(row.cor);
-        const fabric = cleanText(selectedFabric);
         if (!color) return false;
 
         return fabricRows.some((fabricRow) => {
             const haystack = cleanText(`${fabricRow.tipo_malha || ""} ${fabricRow.texto_busca || ""} ${fabricRow.cor || ""}`);
             const fabricColor = cleanText(fabricRow.cor);
             const colorMatches = fabricColor === color || containsWholeText(haystack, color);
-            const fabricMatches = !fabric || containsWholeText(haystack, fabric);
-            return colorMatches && fabricMatches;
+            return colorMatches;
         });
     }
 
@@ -1991,6 +2077,8 @@ h2 {
 </script>
 </body>
 </html>
+
+
 
 
 
