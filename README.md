@@ -28,6 +28,8 @@ Formatos aceitos:
 
 No estoque atual, o WALS reconhece variacoes de coluna para quantidade em estoque, como `Estoque`, `Estoque Atual`, `Qtd Estoque`, `Quantidade em Estoque`, `Saldo`, `Saldo Disponivel`, `Disponivel`, `Stock` e nomes parecidos.
 
+Nas entradas e reposicoes, se o arquivo tiver `Produto` mas nao tiver `Nome Estoque`, o WALS usa `Produto` como nome/modelo do item. Isso atende planilhas com colunas como `Moviment.`, `Cod.Estoque`, `Produto`, `Cor`, `Tamanho` e `Qtd.`.
+
 Arquivos principais da versao GitHub Pages:
 
 - `index.html`

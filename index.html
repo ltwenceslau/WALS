@@ -1036,7 +1036,7 @@ h2 {
         applySmartColumnFallback(kind, rows, mapping);
 
         const mappedInternals = new Set(mapping.values());
-        const missing = requiredColumns[kind].filter((column) => !mappedInternals.has(column));
+        const missing = requiredColumns[kind].filter((column) => !hasRequiredColumn(kind, column, mappedInternals));
         if (missing.length) {
             const available = Object.keys(first).filter(Boolean).join(", ");
             throw new Error(`${fileKinds[kind]} sem colunas obrigatorias: ${missing.join(", ")}. Colunas encontradas: ${available || "nenhuma"}.`);
@@ -1048,6 +1048,13 @@ h2 {
             for (const [original, internal] of mapping.entries()) mapped[internal] = row[original];
             return mapped;
         });
+    }
+
+    function hasRequiredColumn(kind, column, mappedInternals) {
+        if (mappedInternals.has(column)) return true;
+        if (column === "nome_estoque" && mappedInternals.has("produto")) return true;
+        if (kind === "entries" && column === "nome_estoque" && mappedInternals.has("codigo_estoque")) return true;
+        return false;
     }
 
     function applySmartColumnFallback(kind, rows, mapping) {
@@ -1139,9 +1146,10 @@ h2 {
 
         return rows.map((row) => {
             const product = cleanText(row.produto) || extractProduct(row.nome_estoque);
+            const stockName = cleanText(row.nome_estoque) || product;
             const common = {
                 codigo_estoque: cleanText(row.codigo_estoque),
-                nome_estoque: cleanText(row.nome_estoque),
+                nome_estoque: stockName,
                 produto: product,
                 cor: cleanText(row.cor),
                 tamanho: normalizeSize(row.tamanho)
@@ -1955,6 +1963,7 @@ h2 {
 </script>
 </body>
 </html>
+
 
 
 
