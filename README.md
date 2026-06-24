@@ -26,6 +26,8 @@ Formatos aceitos:
 - Entradas e reposicoes: `.xlsx`, `.xls` ou `.csv`
 - Estoque de malha: `.pdf`, `.xlsx`, `.xls` ou `.csv`
 
+No estoque atual, o WALS reconhece variacoes de coluna para quantidade em estoque, como `Estoque`, `Estoque Atual`, `Qtd Estoque`, `Quantidade em Estoque`, `Saldo`, `Saldo Disponivel`, `Disponivel`, `Stock` e nomes parecidos.
+
 Arquivos principais da versao GitHub Pages:
 
 - `index.html`

@@ -707,7 +707,37 @@ h2 {
         produto: ["produto", "modelo", "produto_modelo", "modelo_produto", "nome_produto"],
         cor: ["cor", "cores", "color", "nome_cor"],
         tamanho: ["tamanho", "tam", "grade", "variacao"],
-        estoque_atual: ["estoque_atual", "estoque", "saldo", "saldo_atual", "quantidade", "qtd", "qtde", "disponivel"],
+        estoque_atual: [
+            "estoque_atual",
+            "estoque",
+            "estoque_site",
+            "estoque_do_site",
+            "estoque_disponivel",
+            "estoque_disponível",
+            "estoque_total",
+            "saldo",
+            "saldo_atual",
+            "saldo_disponivel",
+            "saldo_disponível",
+            "disponivel",
+            "disponível",
+            "em_estoque",
+            "quantidade",
+            "quantidade_estoque",
+            "quantidade_em_estoque",
+            "quantidade_disponivel",
+            "qtd",
+            "qtd_estoque",
+            "qtd_em_estoque",
+            "qtd_disponivel",
+            "qtde",
+            "qtde_estoque",
+            "qtde_em_estoque",
+            "qtde_disponivel",
+            "stock",
+            "quantity",
+            "available"
+        ],
         data_aprovacao: ["data_da_aprovacao", "data_aprovacao", "aprovacao", "data_venda", "data_do_pedido", "data"],
         data_entrada: ["data_entrada", "data_da_entrada", "data_movimentacao", "data_da_movimentacao", "data_reposicao", "data"],
         quantidade_vendida: ["qtd", "qtde", "quantidade", "quantidade_vendida", "qtd_vendida", "vendido", "vendas"],
@@ -1003,10 +1033,13 @@ h2 {
             }
         }
 
+        applySmartColumnFallback(kind, rows, mapping);
+
         const mappedInternals = new Set(mapping.values());
         const missing = requiredColumns[kind].filter((column) => !mappedInternals.has(column));
         if (missing.length) {
-            throw new Error(`${fileKinds[kind]} sem colunas obrigatorias: ${missing.join(", ")}.`);
+            const available = Object.keys(first).filter(Boolean).join(", ");
+            throw new Error(`${fileKinds[kind]} sem colunas obrigatorias: ${missing.join(", ")}. Colunas encontradas: ${available || "nenhuma"}.`);
         }
 
         return rows.map((row) => {
@@ -1015,6 +1048,77 @@ h2 {
             for (const [original, internal] of mapping.entries()) mapped[internal] = row[original];
             return mapped;
         });
+    }
+
+    function applySmartColumnFallback(kind, rows, mapping) {
+        const mappedInternals = new Set(mapping.values());
+        const columns = Object.keys(rows[0] || {});
+        const normalizedColumns = columns.map((column) => ({
+            original: column,
+            normalized: normalizeColumn(column)
+        }));
+
+        if (kind === "currentStock" && !mappedInternals.has("estoque_atual")) {
+            const stockColumn = findBestColumn(
+                normalizedColumns,
+                rows,
+                mapping,
+                ["estoque", "saldo", "dispon", "quant", "qtd", "qtde", "stock", "available"],
+                ["codigo", "cod", "produto", "nome", "cor", "tamanho", "tam", "data", "valor", "preco"]
+            );
+            if (stockColumn) mapping.set(stockColumn, "estoque_atual");
+        }
+
+        if (!mappedInternals.has("produto")) {
+            const productColumn = findBestColumn(
+                normalizedColumns,
+                rows,
+                mapping,
+                ["produto", "modelo", "item"],
+                ["codigo", "cod", "cor", "tamanho", "tam", "data", "valor", "preco", "estoque", "saldo", "qtd"]
+            );
+            if (productColumn) mapping.set(productColumn, "produto");
+        }
+    }
+
+    function findBestColumn(normalizedColumns, rows, mapping, includeTokens, excludeTokens) {
+        const usedColumns = new Set(mapping.keys());
+        const candidates = normalizedColumns
+            .filter(({ original, normalized }) => {
+                if (usedColumns.has(original)) return false;
+                if (excludeTokens.some((token) => normalized.includes(token))) return false;
+                return includeTokens.some((token) => normalized.includes(token));
+            })
+            .map(({ original, normalized }) => {
+                const numericScore = sampleNumericScore(rows, original);
+                const nameScore = includeTokens.reduce((score, token) => score + (normalized.includes(token) ? 1 : 0), 0);
+                return { original, score: numericScore * 10 + nameScore };
+            })
+            .sort((a, b) => b.score - a.score);
+
+        return candidates.length && candidates[0].score > 0 ? candidates[0].original : null;
+    }
+
+    function sampleNumericScore(rows, column) {
+        const sample = rows.slice(0, 30);
+        if (!sample.length) return 0;
+        const numeric = sample.filter((row) => {
+            const value = row[column];
+            if (value === null || value === undefined || String(value).trim() === "") return false;
+            return canParseNumber(value);
+        }).length;
+        return numeric / sample.length;
+    }
+
+    function canParseNumber(value) {
+        if (typeof value === "number") return Number.isFinite(value);
+        const text = String(value ?? "").trim();
+        if (!text || ["nan", "none", "nat"].includes(text.toLowerCase())) return false;
+        let cleaned = text.replace(/[^0-9,.-]/g, "");
+        if (!/[0-9]/.test(cleaned)) return false;
+        if (cleaned.includes(",") && cleaned.includes(".")) cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+        else if (cleaned.includes(",")) cleaned = cleaned.replace(",", ".");
+        return Number.isFinite(Number(cleaned));
     }
 
     function normalizeRows(rows, kind) {
@@ -1851,6 +1955,7 @@ h2 {
 </script>
 </body>
 </html>
+
 
 
 
