@@ -217,6 +217,30 @@ h2 {
     overflow-wrap: anywhere;
 }
 
+.file-progress {
+    display: block;
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: #24313d;
+    overflow: hidden;
+    opacity: .9;
+}
+
+.file-progress span {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--cyan), var(--green));
+    transition: width .22s ease;
+}
+
+.file-percent {
+    color: var(--cyan) !important;
+    font-weight: 800;
+}
+
 .card-icon {
     display: inline-grid;
     place-items: center;
@@ -522,25 +546,33 @@ h2 {
                     <span class="card-icon">01</span>
                     <strong>Estoque atual do site</strong>
                     <small data-file-name="currentStock">Nenhum arquivo</small>
-                    <input type="file" accept=".xlsx,.xls,.csv" data-file-input="currentStock">
+                    <span class="file-progress" data-file-progress="currentStock"><span></span></span>
+                    <small class="file-percent" data-file-percent="currentStock">0%</small>
+                    <input type="file" accept=".xlsx,.xls,.csv" data-file-input="currentStock" onchange="window.walsHandleFileInput && window.walsHandleFileInput(this)">
                 </label>
                 <label class="upload-card" data-upload-card="sales">
                     <span class="card-icon">02</span>
                     <strong>Relatorio de vendas</strong>
                     <small data-file-name="sales">Nenhum arquivo</small>
-                    <input type="file" accept=".xlsx,.xls,.csv" data-file-input="sales">
+                    <span class="file-progress" data-file-progress="sales"><span></span></span>
+                    <small class="file-percent" data-file-percent="sales">0%</small>
+                    <input type="file" accept=".xlsx,.xls,.csv" data-file-input="sales" onchange="window.walsHandleFileInput && window.walsHandleFileInput(this)">
                 </label>
                 <label class="upload-card" data-upload-card="entries">
                     <span class="card-icon">03</span>
                     <strong>Entradas e reposicoes</strong>
                     <small data-file-name="entries">Nenhum arquivo</small>
-                    <input type="file" accept=".xlsx,.xls,.csv" data-file-input="entries">
+                    <span class="file-progress" data-file-progress="entries"><span></span></span>
+                    <small class="file-percent" data-file-percent="entries">0%</small>
+                    <input type="file" accept=".xlsx,.xls,.csv" data-file-input="entries" onchange="window.walsHandleFileInput && window.walsHandleFileInput(this)">
                 </label>
                 <label class="upload-card" data-upload-card="fabric">
                     <span class="card-icon">04</span>
                     <strong>Estoque de malha</strong>
                     <small data-file-name="fabric">Nenhum arquivo</small>
-                    <input type="file" accept=".xlsx,.xls,.csv,.pdf,application/pdf" data-file-input="fabric">
+                    <span class="file-progress" data-file-progress="fabric"><span></span></span>
+                    <small class="file-percent" data-file-percent="fabric">0%</small>
+                    <input type="file" accept=".xlsx,.xls,.csv,.pdf,application/pdf" data-file-input="fabric" onchange="window.walsHandleFileInput && window.walsHandleFileInput(this)">
                 </label>
             </div>
             <div class="message-area" id="upload-messages"></div>
@@ -653,7 +685,6 @@ h2 {
         </section>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script>
 (function () {
     const fileKinds = {
@@ -755,9 +786,10 @@ h2 {
     };
 
     const $ = (selector) => document.querySelector(selector);
-    const $ = (selector) => Array.from(document.querySelectorAll(selector));
+    const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
     document.addEventListener("DOMContentLoaded", () => {
+        window.walsHandleFileInput = handleFileSelected;
         bindUpload();
         bindNavigation();
         bindForms();
@@ -765,17 +797,8 @@ h2 {
     });
 
     function bindUpload() {
-        $("[data-file-input]").forEach((input) => {
-            input.addEventListener("change", () => {
-                const kind = input.dataset.fileInput;
-                const file = input.files && input.files[0];
-                state.files[kind] = file || null;
-                const label = document.querySelector(`[data-file-name="${kind}"]`);
-                const card = document.querySelector(`[data-upload-card="${kind}"]`);
-                if (label) label.textContent = file ? file.name : "Nenhum arquivo";
-                if (card) card.classList.toggle("is-loaded", Boolean(file));
-                updateUploadStatus();
-            });
+        $$("[data-file-input]").forEach((input) => {
+            input.onchange = () => handleFileSelected(input);
         });
 
         $("#load-files-btn").addEventListener("click", loadFiles);
@@ -784,8 +807,46 @@ h2 {
         });
     }
 
+    function handleFileSelected(input) {
+        const kind = input.dataset.fileInput;
+        const file = input.files && input.files[0];
+        state.files[kind] = file || null;
+
+        const label = document.querySelector(`[data-file-name="${kind}"]`);
+        const card = document.querySelector(`[data-upload-card="${kind}"]`);
+        if (label) label.textContent = file ? "Carregando arquivo..." : "Nenhum arquivo";
+        if (card) card.classList.toggle("is-loaded", Boolean(file));
+        updateUploadStatus();
+
+        if (!file) {
+            setFileProgress(kind, 0);
+            return;
+        }
+
+        setFileProgress(kind, 8);
+        let percent = 8;
+        const timer = window.setInterval(() => {
+            percent = Math.min(percent + 18, 96);
+            setFileProgress(kind, percent);
+        }, 80);
+
+        window.setTimeout(() => {
+            window.clearInterval(timer);
+            setFileProgress(kind, 100);
+            if (label) label.textContent = file.name;
+            updateUploadStatus();
+        }, 520);
+    }
+
+    function setFileProgress(kind, percent) {
+        const bar = document.querySelector(`[data-file-progress="${kind}"] span`);
+        const text = document.querySelector(`[data-file-percent="${kind}"]`);
+        if (bar) bar.style.width = `${percent}%`;
+        if (text) text.textContent = `${Math.round(percent)}%`;
+    }
+
     function bindNavigation() {
-        $("[data-back]").forEach((button) => {
+        $$("[data-back]").forEach((button) => {
             button.addEventListener("click", () => showView(button.dataset.back));
         });
         $("#new-analysis-btn").addEventListener("click", () => window.location.reload());
@@ -1033,12 +1094,12 @@ h2 {
         const coverage = {};
         const modelFabric = {};
         const selectedProducts = new Set(
-            $("#coverage-body [data-select-product]")
+            $$("#coverage-body [data-select-product]")
                 .filter((input) => input.checked)
                 .map((input) => input.dataset.selectProduct)
         );
 
-        $("#coverage-body input").forEach((input) => {
+        $$("#coverage-body input").forEach((input) => {
             if (!input.dataset.product) return;
             if (!selectedProducts.has(input.dataset.product)) return;
             const raw = String(input.value || "").replace(",", ".");
@@ -1046,7 +1107,7 @@ h2 {
             if (value > 0) coverage[input.dataset.product] = value;
         });
 
-        $("#coverage-body [data-fabric-product]").forEach((input) => {
+        $$("#coverage-body [data-fabric-product]").forEach((input) => {
             if (!selectedProducts.has(input.dataset.fabricProduct)) return;
             const value = cleanText(input.value);
             if (value) modelFabric[input.dataset.fabricProduct] = value;
@@ -1083,7 +1144,7 @@ h2 {
 
     function saveCorrections() {
         const corrections = {};
-        $("[data-divergence-id]").forEach((input) => {
+        $$("[data-divergence-id]").forEach((input) => {
             const value = cleanText(input.value);
             if (value) corrections[input.dataset.divergenceId] = value;
         });
@@ -1105,7 +1166,7 @@ h2 {
     }
 
     function runProcessing() {
-        const steps = $("#process-list li");
+        const steps = $$("#process-list li");
         const bar = $("#progress-bar");
         let current = 0;
         const timer = window.setInterval(() => {
@@ -1484,8 +1545,8 @@ h2 {
     }
 
     function showView(name) {
-        $("[data-view]").forEach((view) => view.classList.toggle("is-visible", view.dataset.view === name));
-        $("[data-step-dot]").forEach((button) => button.classList.toggle("is-active", button.dataset.stepDot === name));
+        $$("[data-view]").forEach((view) => view.classList.toggle("is-visible", view.dataset.view === name));
+        $$("[data-step-dot]").forEach((button) => button.classList.toggle("is-active", button.dataset.stepDot === name));
         window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
@@ -1790,6 +1851,8 @@ h2 {
 </script>
 </body>
 </html>
+
+
 
 
 

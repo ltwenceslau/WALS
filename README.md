@@ -9,6 +9,7 @@ O arquivo `index.html` e a versao pronta para abrir direto no navegador pelo Git
 Ela roda 100% no navegador:
 
 - importa os 4 arquivos obrigatorios;
+- mostra barra de carregamento e porcentagem ao selecionar cada arquivo;
 - identifica produtos/modelos;
 - permite selecionar quais modelos entram na reposicao;
 - recebe cobertura por modelo selecionado;
@@ -43,6 +44,8 @@ O `index.html` ja contem o CSS e o JavaScript do WALS embutidos. Isso evita erro
 7. Abra o link gerado pelo GitHub Pages.
 
 Quando abrir o link, o WALS deve aparecer como sistema, nao como README.
+
+Depois de substituir o `index.html`, pressione `Ctrl + F5` no navegador para limpar o cache e carregar a versao nova.
 
 ## Versao Python opcional
 
